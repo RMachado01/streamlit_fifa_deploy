@@ -1,128 +1,77 @@
 import pandas as pd
 from datetime import datetime
-from src.cleaning import converter_valor   # Importo minha função de conversão de valores
-import re
+from io import BytesIO
+import requests
 
+# Função auxiliar para converter valores monetários do FIFA
+def converter_valor(valor):
+    if pd.isna(valor) or valor == "":
+        return 0
+    valor = str(valor).replace("€", "").strip()
+    try:
+        if valor.endswith("M"):
+            return int(float(valor[:-1]) * 1_000_000)
+        elif valor.endswith("K"):
+            return int(float(valor[:-1]) * 1_000)
+        else:
+            return int(float(valor))
+    except:
+        return 0
 
-# ------------------------------------------------------------
-# Função para converter alturas que vêm no padrão do FIFA:
-# Exemplos possíveis no dataset:
-#   5'11"   |  6'2  |  5′11″  |  181cm
-#
-# O objetivo é transformar tudo em centímetros (int).
-# ------------------------------------------------------------
-def convert_height(h):
-
-    # Converto para string e removo espaços desnecessários
-    h = str(h).strip()
-
-    # Caso já venha no formato “181cm”, apenas removo o sufixo
-    if "cm" in h.lower():
-        return int(h.lower().replace("cm", "").strip())
-
-    # Padrão para capturar "pés" e "polegadas" mesmo com símbolos diferentes
-    match = re.match(r"(\d+)[^\d]+(\d+)", h)
-
-    # Caso o formato esteja muito fora do padrão, retorno NaN
-    if not match:
+# Função auxiliar para converter altura
+def converter_altura(altura):
+    """
+    Converte altura do formato "1,80" ou "1.80" para centímetros.
+    """
+    if pd.isna(altura):
+        return None
+    altura = str(altura).replace(",", ".").strip()
+    try:
+        return int(float(altura) * 100)
+    except:
         return None
 
-    ft, inch = match.groups()
+# Função auxiliar para converter peso
+def converter_peso(peso):
+    """
+    Converte peso para kg, removendo letras e espaços.
+    """
+    if pd.isna(peso):
+        return None
+    peso = str(peso).replace("kg", "").strip()
+    try:
+        return int(float(peso))
+    except:
+        return None
 
-    # Conversão real → pés/ft e polegadas/inch para centímetros
-    return round(int(ft) * 30.48 + int(inch) * 2.54)
+# Função principal para carregar e limpar os dados do FIFA
+def load_fifa_data(csv_path="Data/CLEAN_FIFA2023_offcial_data.csv"):
+    # Carrega o CSV
+    df = pd.read_csv(csv_path, index_col=0)
 
-
-
-# ------------------------------------------------------------
-# Função para converter pesos que vêm no padrão:
-#   "150lbs", "150 lbs", "72kg", "72 kg"
-#
-# Tudo vira quilogramas (int).
-# ------------------------------------------------------------
-def convert_weight(w):
-
-    # Converto sempre para string minúscula
-    w = str(w).strip().lower()
-
-    # Caso já esteja em kg, só removo o texto
-    if "kg" in w:
-        return int(w.replace("kg", "").strip())
-
-    # Caso esteja em libras (padrão FIFA)
-    if "lb" in w:
-        num = re.sub(r"[^\d]", "", w)  # remove caracteres não numéricos
-        return round(int(num) * 0.453592)
-
-    # Valores muito ruins ou vazios viram None
-    return None
-
-
-
-# ------------------------------------------------------------
-# Função principal que carrega todo o dataset do FIFA,
-# faz as limpezas necessárias e retorna um dataframe pronto
-# para uso em todas as páginas.
-# ------------------------------------------------------------
-def load_fifa_data():
-
-    # Carrego meu arquivo já limpo (oficial do projeto)
-    df = pd.read_csv("Data/CLEAN_FIFA2023_offcial_data.csv", index_col=0)
-
-    # A coluna de fotos às vezes vem com lixo → padronizo como texto limpo
+    # Padroniza strings
     df["Photo"] = df["Photo"].astype(str).str.strip()
     df["Flag"] = df["Flag"].astype(str).str.strip()
+    df["Club Logo"] = df["Club Logo"].astype(str).str.strip()
 
-    # Converto ano do contrato para númerico (quem estiver com erro vira NaN)
+    # Converte contratos para números e filtra contratos válidos
     df["Contract Valid Until"] = pd.to_numeric(df["Contract Valid Until"], errors="coerce")
-
-    # Removo jogadores com contrato vencido
     df = df[df["Contract Valid Until"] >= datetime.today().year]
 
-    # Aplico conversão de altura e peso
-    df["Height"] = df["Height"].apply(convert_height)
-    df["Weight"] = df["Weight"].apply(convert_weight)
+    # Converte valores monetários
+    df["Value"] = df["Value"].apply(converter_valor)
+    df["Wage"] = df["Wage"].apply(converter_valor)
+    df["Release Clause"] = df["Release Clause"].apply(converter_valor)
 
-    # --------------------------------------------------------
-    # Função interna para tratar valores monetários do FIFA:
-    #   "€10.5M" → 10500000
-    #   "€300K"  →   300000
-    #   "€0"     →        0
-    # --------------------------------------------------------
-    def money_to_number(v):
+    # Converte altura e peso
+    df["Height"] = df["Height"].apply(converter_altura)
+    df["Weight"] = df["Weight"].apply(converter_peso)
 
-        # Se estiver vazio → vira 0
-        if pd.isna(v):
-            return 0
-
-        v = str(v).replace("€", "").strip()
-
-        if v == "":
-            return 0
-
-        # Milhões (“10.5M”)
-        if v.endswith("M"):
-            return int(float(v[:-1]) * 1_000_000)
-
-        # Milhares (“300K”)
-        if v.endswith("K"):
-            return int(float(v[:-1]) * 1_000)
-
-        # Número puro
-        try:
-            return int(float(v))
-        except:
-            return 0
-
-    # Agora aplico nas 3 colunas de valores
-    df["Value"] = df["Value"].apply(money_to_number)
-    df["Wage"] = df["Wage"].apply(money_to_number)
-    df["Release Clause"] = df["Release Clause"].apply(money_to_number)
-
-    # Removo jogadores com valor zero (dados ruins)
+    # Remove jogadores sem valor
     df = df[df["Value"] > 0]
 
-    # Ordeno pela nota geral (Overall)
+    # Ordena por Overall
     df = df.sort_values(by="Overall", ascending=False)
 
+    # Retorna dataframe limpo
     return df

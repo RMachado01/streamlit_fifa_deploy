@@ -2,32 +2,46 @@ import streamlit as st
 import requests
 from io import BytesIO
 
-# Carrega o dataframe salvo na sessão
+# Configurações da página da segunda aba (Players)
+st.set_page_config(
+    page_title="Players",
+    layout="wide"
+)
+
+# Função para baixar a imagem e retornar bytes para o Streamlit
+def url_para_bytes(url):
+    try:
+        headers = {"User-Agent": "Mozilla/5.0"}  # necessário para alguns sites bloquearem bots
+        response = requests.get(url, headers=headers, timeout=5)
+        response.raise_for_status()
+        return BytesIO(response.content)
+    except:
+        # Placeholder caso a imagem não carregue
+        return BytesIO(requests.get("https://via.placeholder.com/70x70.png?text=No+Image").content)
+
+# Carrega o dataframe da sessão
 df_data = st.session_state["data"]
 
-# Filtros de clube e jogador
+# Filtro de clubes
 clubes = df_data["Club"].value_counts().index
 club = st.sidebar.selectbox("Clube", clubes)
+
+# Filtra jogadores do clube
 df_players = df_data[df_data["Club"] == club]
 players = df_players["Name"].value_counts().index
 player = st.sidebar.selectbox("Jogador", players)
-player_stats = df_players[df_players["Name"] == player].iloc[0]
 
-# ---- FUNÇÃO PARA VALIDAR URL DA IMAGEM ----
-def validar_url_imagem(url):
-    """
-    Retorna a URL se válida, caso contrário retorna placeholder.
-    """
-    if isinstance(url, str) and url.startswith("http"):
-        return url.strip()
-    else:
-        return "https://via.placeholder.com/70x70.png?text=No+Image"
+# Carrega os dados do jogador
+player_stats = df_data[df_data["Name"] == player].iloc[0]
 
-# Exibe a foto do jogador (com placeholder se URL inválida)
-st.image(validar_url_imagem(player_stats["Photo"]), width=70)
+# ---- EXIBE A FOTO DO JOGADOR ----
+url_foto = player_stats["Photo"]
+st.image(url_para_bytes(url_foto), width=70)
 
-# Nome e informações do jogador
+# Nome do jogador
 st.title(player_stats["Name"])
+
+# Informações básicas
 st.markdown(f"**Clube:** {player_stats['Club']}")
 st.markdown(f"**Posição:** {player_stats['Position']}")
 
@@ -38,14 +52,12 @@ col3.markdown(f"**Peso:** {player_stats['Weight']} kg")
 
 st.divider()
 
+# Overall
 st.subheader(f"Overall {player_stats['Overall']}")
 st.progress(int(player_stats["Overall"]))
 
+# Valores financeiros
 col1, col2, col3, col4 = st.columns(4)
-
-def formatar_euro(valor):
-    return f"€ {valor:,.0f}".replace(",", ".")
-
-col1.metric(label="Valor bruto", value=formatar_euro(player_stats["Value"]))
-col2.metric(label="Remuneração semanal", value=formatar_euro(player_stats["Wage"]))
-col3.metric(label="Valor de mercado", value=formatar_euro(player_stats["Release Clause"]))
+col1.metric("Valor bruto", f"€ {player_stats['Value']:,}")
+col2.metric("Remuneração semanal", f"€ {player_stats['Wage']:,}")
+col3.metric("Valor de mercado", f"€ {player_stats['Release Clause']:,}")
