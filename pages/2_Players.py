@@ -1,13 +1,15 @@
 import streamlit as st
 
+from src.estado import dados_fifa
+
 # Configurações da página
 st.set_page_config(
     page_title="Players",
     layout="wide"
 )
 
-# Carrega o dataframe da sessão
-df_data = st.session_state["data"]
+# Carrega o dataframe (vem do cache depois da primeira vez)
+df_data = dados_fifa()
 
 # ---- FILTROS ----
 clubes = df_data["Club"].value_counts().index
@@ -35,10 +37,10 @@ st.title(player_stats["Name"])
 st.markdown(f"**Clube:** {player_stats['Club']}")
 st.markdown(f"**Posição:** {player_stats['Position']}")
 
-col1, col2, col3, col4 = st.columns(4)
+col1, col2, col3 = st.columns(3)
 col1.markdown(f"**Idade:** {player_stats['Age']}")
-col2.markdown(f"**Altura:** {player_stats['Height']}")
-col3.markdown(f"**Peso:** {player_stats['Weight']}")
+col2.markdown(f"**Altura:** {player_stats['Height']} cm")
+col3.markdown(f"**Peso:** {player_stats['Weight']} kg")
 
 st.divider()
 
@@ -47,7 +49,7 @@ st.subheader(f"Overall {player_stats['Overall']}")
 st.progress(int(player_stats["Overall"]))
 
 # Valores financeiros
-col1, col2, col3, col4 = st.columns(4)
-col1.metric("Valor bruto", f"€ {player_stats['Value']:,}".replace(",", "."))
-col2.metric("Remuneração semanal", f"€ {player_stats['Wage']:,}".replace(",", "."))
-col3.metric("Valor de mercado", f"€ {player_stats['Release Clause']:,}".replace(",", "."))
+col1, col2, col3 = st.columns(3)
+col1.metric("Valor de mercado", f"€ {player_stats['Value']:,}".replace(",", "."))
+col2.metric("Salário semanal", f"€ {player_stats['Wage']:,}".replace(",", "."))
+col3.metric("Multa rescisória", f"€ {player_stats['Release Clause']:,}".replace(",", "."))
